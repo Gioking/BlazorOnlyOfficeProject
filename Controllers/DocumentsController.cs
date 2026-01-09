@@ -192,7 +192,20 @@ public class DocumentsController : ControllerBase
                 return NotFound($"Document '{filename}' not found");
             }
 
-            var baseUrl = $"{Request.Scheme}://{Request.Host}";
+            // Use host.docker.internal for OnlyOffice to reach the host machine from Docker container
+            var host = Request.Host.Host;
+            var port = Request.Host.Port ?? (Request.Scheme == "https" ? 443 : 80);
+
+            // Replace localhost with host.docker.internal for Docker compatibility
+            if (host == "localhost" || host == "127.0.0.1")
+            {
+                host = "host.docker.internal";
+            }
+
+            var baseUrl = port == 80 || port == 443
+                ? $"{Request.Scheme}://{host}"
+                : $"{Request.Scheme}://{host}:{port}";
+
             var documentUrl = $"{baseUrl}/api/documents/{filename}";
             var callbackUrl = $"{baseUrl}/api/documents/callback";
 
@@ -213,6 +226,8 @@ public class DocumentsController : ControllerBase
                 userName = "User",
                 apiUrl = _configuration["OnlyOffice:ApiUrl"] ?? "http://localhost:8080/web-apps/apps/api/documents/api.js"
             };
+
+            _logger.LogInformation($"OnlyOffice Config - DocumentUrl: {documentUrl}, CallbackUrl: {callbackUrl}, Key: {key}");
 
             return Ok(config);
         }
