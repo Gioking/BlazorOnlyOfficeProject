@@ -1,0 +1,326 @@
+@page "/document-editor"
+@rendermode InteractiveServer
+@inject HttpClient HttpClient
+@inject IConfiguration Configuration
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>OnlyOffice Document Editor</PageTitle>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mb-4">📄 OnlyOffice Document Editor</h1>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">📁 Gestione Documenti</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <button class="btn btn-success me-2" @onclick="CreateNewDocument">
+                            ➕ Nuovo Documento
+                        </button>
+                        <label class="btn btn-primary">
+                            📤 Carica Documento
+                            <InputFile OnChange="HandleFileUpload" accept=".docx" hidden />
+                        </label>
+                    </div>
+
+                    @if (isLoading)
+                    {
+                        <div class="text-center">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Caricamento...</span>
+                            </div>
+                        </div>
+                    }
+                    else if (documents.Count == 0)
+                    {
+                        <div class="alert alert-info">
+                            Nessun documento disponibile. Crea un nuovo documento o caricane uno esistente.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="list-group">
+                            @foreach (var doc in documents)
+                            {
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <h6 class="mb-1">@doc.Name</h6>
+                                            <small class="text-muted">
+                                                @FormatFileSize(doc.Size) - Modificato: @doc.Modified.ToString("dd/MM/yyyy HH:mm")
+                                            </small>
+                                        </div>
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm btn-outline-primary" @onclick="() => OpenDocument(doc.Name)">
+                                                📖 Apri
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-success" @onclick="() => DownloadDocument(doc.Name)">
+                                                💾 Scarica
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteDocument(doc.Name)">
+                                                🗑️ Elimina
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">📝 Editor Documento</h5>
+                </div>
+                <div class="card-body">
+                    @if (string.IsNullOrEmpty(currentDocument))
+                    {
+                        <div class="alert alert-warning">
+                            Seleziona o crea un documento per iniziare l'editing.
+                        </div>
+                        <div class="text-center p-5">
+                            <p class="text-muted">
+                                L'editor OnlyOffice verrà caricato qui quando aprirai un documento.
+                            </p>
+                            <div style="border: 2px dashed #ccc; padding: 40px; border-radius: 10px;">
+                                <h3>OnlyOffice Editor</h3>
+                                <p>Supporto per documenti Word (.docx)</p>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="mb-3">
+                            <h6>Documento corrente: <strong>@currentDocument</strong></h6>
+                            <button class="btn btn-sm btn-primary me-2" @onclick="SaveCurrentDocument">
+                                💾 Salva
+                            </button>
+                            <button class="btn btn-sm btn-secondary" @onclick="CloseDocument">
+                                ❌ Chiudi
+                            </button>
+                        </div>
+
+                        <div id="onlyoffice-editor" style="height: 600px; border: 1px solid #ddd;">
+                            <div class="text-center p-5">
+                                <div class="alert alert-info">
+                                    <h5>💡 Integrazione OnlyOffice</h5>
+                                    <p>Per utilizzare l'editor OnlyOffice completo, è necessario:</p>
+                                    <ol class="text-start">
+                                        <li>Installare OnlyOffice Document Server</li>
+                                        <li>Configurare l'endpoint del server</li>
+                                        <li>Implementare i callback per il salvataggio</li>
+                                    </ol>
+                                    <hr/>
+                                    <p class="mb-0">
+                                        <strong>Documento corrente:</strong> @currentDocument<br/>
+                                        <small class="text-muted">
+                                            Per ora puoi scaricare il documento, modificarlo con Word/LibreOffice,
+                                            e ricaricarlo tramite l'opzione "Carica Documento".
+                                        </small>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(statusMessage))
+    {
+        <div class="alert alert-@statusType alert-dismissible fade show" role="alert">
+            @statusMessage
+            <button type="button" class="btn-close" @onclick="ClearStatus"></button>
+        </div>
+    }
+</div>
+
+@code {
+    private List<DocumentInfo> documents = new();
+    private string currentDocument = "";
+    private bool isLoading = true;
+    private string statusMessage = "";
+    private string statusType = "info";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDocuments();
+    }
+
+    private async Task LoadDocuments()
+    {
+        isLoading = true;
+        try
+        {
+            var response = await HttpClient.GetFromJsonAsync<List<DocumentInfo>>("/api/documents");
+            documents = response ?? new List<DocumentInfo>();
+        }
+        catch (Exception ex)
+        {
+            ShowStatus($"Errore nel caricamento dei documenti: {ex.Message}", "danger");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task CreateNewDocument()
+    {
+        try
+        {
+            var filename = $"Nuovo_Documento_{DateTime.Now:yyyyMMdd_HHmmss}.docx";
+            var response = await HttpClient.PostAsJsonAsync("/api/documents/create", new { Filename = filename });
+
+            if (response.IsSuccessStatusCode)
+            {
+                ShowStatus($"Documento '{filename}' creato con successo!", "success");
+                await LoadDocuments();
+                currentDocument = filename;
+            }
+            else
+            {
+                ShowStatus("Errore nella creazione del documento", "danger");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowStatus($"Errore: {ex.Message}", "danger");
+        }
+    }
+
+    private async Task HandleFileUpload(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            var file = e.File;
+            if (file != null)
+            {
+                var content = new MultipartFormDataContent();
+                var fileContent = new StreamContent(file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024));
+                content.Add(fileContent, "file", file.Name);
+
+                var response = await HttpClient.PostAsync("/api/documents/upload", content);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    ShowStatus($"Documento '{file.Name}' caricato con successo!", "success");
+                    await LoadDocuments();
+                }
+                else
+                {
+                    ShowStatus("Errore nel caricamento del documento", "danger");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowStatus($"Errore: {ex.Message}", "danger");
+        }
+    }
+
+    private void OpenDocument(string filename)
+    {
+        currentDocument = filename;
+        ShowStatus($"Documento '{filename}' aperto", "info");
+    }
+
+    private async Task DownloadDocument(string filename)
+    {
+        try
+        {
+            var url = $"/api/documents/{filename}";
+            await JS.InvokeVoidAsync("open", url, "_blank");
+            ShowStatus($"Download di '{filename}' avviato", "success");
+        }
+        catch (Exception ex)
+        {
+            ShowStatus($"Errore nel download: {ex.Message}", "danger");
+        }
+    }
+
+    private async Task DeleteDocument(string filename)
+    {
+        try
+        {
+            var confirmed = await JS.InvokeAsync<bool>("confirm", $"Sei sicuro di voler eliminare '{filename}'?");
+            if (confirmed)
+            {
+                var response = await HttpClient.DeleteAsync($"/api/documents/{filename}");
+
+                if (response.IsSuccessStatusCode)
+                {
+                    ShowStatus($"Documento '{filename}' eliminato", "success");
+                    if (currentDocument == filename)
+                    {
+                        currentDocument = "";
+                    }
+                    await LoadDocuments();
+                }
+                else
+                {
+                    ShowStatus("Errore nell'eliminazione del documento", "danger");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowStatus($"Errore: {ex.Message}", "danger");
+        }
+    }
+
+    private async Task SaveCurrentDocument()
+    {
+        ShowStatus($"Funzionalità di salvataggio per '{currentDocument}' - Implementazione OnlyOffice richiesta", "warning");
+    }
+
+    private void CloseDocument()
+    {
+        currentDocument = "";
+        ShowStatus("Documento chiuso", "info");
+    }
+
+    private void ShowStatus(string message, string type)
+    {
+        statusMessage = message;
+        statusType = type;
+        StateHasChanged();
+    }
+
+    private void ClearStatus()
+    {
+        statusMessage = "";
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    public class DocumentInfo
+    {
+        public string Name { get; set; } = "";
+        public long Size { get; set; }
+        public DateTime Modified { get; set; }
+    }
+}
