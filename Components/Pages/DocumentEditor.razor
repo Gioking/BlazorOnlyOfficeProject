@@ -4,6 +4,7 @@
 @inject IConfiguration Configuration
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject ILogger<DocumentEditor> Logger
 
 <PageTitle>OnlyOffice Document Editor</PageTitle>
 
@@ -15,17 +16,17 @@
     </div>
 
     <div class="row mb-4">
-        <div class="col-md-6">
+        <div class="col-md-4">
             <div class="card">
                 <div class="card-header bg-primary text-white">
                     <h5 class="mb-0">📁 Gestione Documenti</h5>
                 </div>
                 <div class="card-body">
                     <div class="mb-3">
-                        <button class="btn btn-success me-2" @onclick="CreateNewDocument">
+                        <button class="btn btn-success me-2 mb-2" @onclick="CreateNewDocument">
                             ➕ Nuovo Documento
                         </button>
-                        <label class="btn btn-primary">
+                        <label class="btn btn-primary mb-2">
                             📤 Carica Documento
                             <InputFile OnChange="HandleFileUpload" accept=".docx" hidden />
                         </label>
@@ -47,26 +48,23 @@
                     }
                     else
                     {
-                        <div class="list-group">
+                        <div class="list-group" style="max-height: 500px; overflow-y: auto;">
                             @foreach (var doc in documents)
                             {
-                                <div class="list-group-item">
+                                <div class="list-group-item @(currentDocument == doc.Name ? "active" : "")">
                                     <div class="d-flex justify-content-between align-items-center">
-                                        <div>
+                                        <div class="flex-grow-1" @onclick="() => OpenDocument(doc.Name)" style="cursor: pointer;">
                                             <h6 class="mb-1">@doc.Name</h6>
-                                            <small class="text-muted">
-                                                @FormatFileSize(doc.Size) - Modificato: @doc.Modified.ToString("dd/MM/yyyy HH:mm")
+                                            <small class="@(currentDocument == doc.Name ? "text-white" : "text-muted")">
+                                                @FormatFileSize(doc.Size) - @doc.Modified.ToString("dd/MM/yyyy HH:mm")
                                             </small>
                                         </div>
                                         <div class="btn-group">
-                                            <button class="btn btn-sm btn-outline-primary" @onclick="() => OpenDocument(doc.Name)">
-                                                📖 Apri
-                                            </button>
                                             <button class="btn btn-sm btn-outline-success" @onclick="() => DownloadDocument(doc.Name)">
-                                                💾 Scarica
+                                                💾
                                             </button>
                                             <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteDocument(doc.Name)">
-                                                🗑️ Elimina
+                                                🗑️
                                             </button>
                                         </div>
                                     </div>
@@ -78,59 +76,85 @@
             </div>
         </div>
 
-        <div class="col-md-6">
+        <div class="col-md-8">
             <div class="card">
                 <div class="card-header bg-success text-white">
-                    <h5 class="mb-0">📝 Editor Documento</h5>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">📝 Editor Documento</h5>
+                        @if (!string.IsNullOrEmpty(currentDocument))
+                        {
+                            <button class="btn btn-sm btn-light" @onclick="CloseDocument">
+                                ❌ Chiudi
+                            </button>
+                        }
+                    </div>
                 </div>
-                <div class="card-body">
+                <div class="card-body p-0">
                     @if (string.IsNullOrEmpty(currentDocument))
                     {
-                        <div class="alert alert-warning">
-                            Seleziona o crea un documento per iniziare l'editing.
+                        <div class="p-4">
+                            <div class="alert alert-warning">
+                                Seleziona o crea un documento per iniziare l'editing.
+                            </div>
+                            <div class="text-center p-5">
+                                <p class="text-muted">
+                                    L'editor OnlyOffice verrà caricato qui quando aprirai un documento.
+                                </p>
+                                <div style="border: 2px dashed #ccc; padding: 40px; border-radius: 10px;">
+                                    <h3>OnlyOffice Editor</h3>
+                                    <p>Supporto per documenti Word (.docx)</p>
+                                    <p class="small text-muted">
+                                        Server: @(Configuration["OnlyOffice:DocumentServerUrl"] ?? "Non configurato")
+                                    </p>
+                                </div>
+                            </div>
                         </div>
-                        <div class="text-center p-5">
-                            <p class="text-muted">
-                                L'editor OnlyOffice verrà caricato qui quando aprirai un documento.
-                            </p>
-                            <div style="border: 2px dashed #ccc; padding: 40px; border-radius: 10px;">
-                                <h3>OnlyOffice Editor</h3>
-                                <p>Supporto per documenti Word (.docx)</p>
+                    }
+                    else if (editorError)
+                    {
+                        <div class="p-4">
+                            <div class="alert alert-danger">
+                                <h5>❌ Errore OnlyOffice Document Server</h5>
+                                <p>Non è possibile connettersi al Document Server OnlyOffice.</p>
+                                <hr/>
+                                <p class="mb-2"><strong>Verifica che:</strong></p>
+                                <ol>
+                                    <li>OnlyOffice Document Server sia in esecuzione</li>
+                                    <li>Il container Docker sia attivo: <code>docker ps | grep onlyoffice</code></li>
+                                    <li>Il server sia accessibile su: <code>@(Configuration["OnlyOffice:DocumentServerUrl"] ?? "http://localhost:8080")</code></li>
+                                </ol>
+                                <hr/>
+                                <p class="mb-0">
+                                    <strong>Per avviare il container:</strong><br/>
+                                    <code>docker run -i -t -d -p 8080:80 --name onlyoffice-server onlyoffice/documentserver</code>
+                                </p>
+                            </div>
+                            <div class="text-center">
+                                <button class="btn btn-primary" @onclick="RetryLoadEditor">
+                                    🔄 Riprova
+                                </button>
+                                <button class="btn btn-secondary" @onclick="() => DownloadDocument(currentDocument)">
+                                    💾 Scarica per modifica offline
+                                </button>
                             </div>
                         </div>
                     }
                     else
                     {
-                        <div class="mb-3">
-                            <h6>Documento corrente: <strong>@currentDocument</strong></h6>
-                            <button class="btn btn-sm btn-primary me-2" @onclick="SaveCurrentDocument">
-                                💾 Salva
-                            </button>
-                            <button class="btn btn-sm btn-secondary" @onclick="CloseDocument">
-                                ❌ Chiudi
-                            </button>
-                        </div>
-
-                        <div id="onlyoffice-editor" style="height: 600px; border: 1px solid #ddd;">
-                            <div class="text-center p-5">
-                                <div class="alert alert-info">
-                                    <h5>💡 Integrazione OnlyOffice</h5>
-                                    <p>Per utilizzare l'editor OnlyOffice completo, è necessario:</p>
-                                    <ol class="text-start">
-                                        <li>Installare OnlyOffice Document Server</li>
-                                        <li>Configurare l'endpoint del server</li>
-                                        <li>Implementare i callback per il salvataggio</li>
-                                    </ol>
-                                    <hr/>
-                                    <p class="mb-0">
-                                        <strong>Documento corrente:</strong> @currentDocument<br/>
-                                        <small class="text-muted">
-                                            Per ora puoi scaricare il documento, modificarlo con Word/LibreOffice,
-                                            e ricaricarlo tramite l'opzione "Carica Documento".
-                                        </small>
-                                    </p>
-                                </div>
+                        <div class="p-2">
+                            <div class="mb-2">
+                                <small class="text-muted">
+                                    <strong>Documento:</strong> @currentDocument
+                                    @if (isEditorLoading)
+                                    {
+                                        <span class="ms-2">
+                                            <span class="spinner-border spinner-border-sm" role="status"></span>
+                                            Caricamento editor...
+                                        </span>
+                                    }
+                                </small>
                             </div>
+                            <div id="onlyoffice-editor" style="height: 600px;"></div>
                         </div>
                     }
                 </div>
@@ -140,7 +164,7 @@
 
     @if (!string.IsNullOrEmpty(statusMessage))
     {
-        <div class="alert alert-@statusType alert-dismissible fade show" role="alert">
+        <div class="alert alert-@statusType alert-dismissible fade show position-fixed bottom-0 end-0 m-3" role="alert" style="z-index: 9999; max-width: 400px;">
             @statusMessage
             <button type="button" class="btn-close" @onclick="ClearStatus"></button>
         </div>
@@ -151,12 +175,57 @@
     private List<DocumentInfo> documents = new();
     private string currentDocument = "";
     private bool isLoading = true;
+    private bool isEditorLoading = false;
+    private bool editorError = false;
     private string statusMessage = "";
     private string statusType = "info";
+    private bool editorInitialized = false;
 
     protected override async Task OnInitializedAsync()
     {
         await LoadDocuments();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Load OnlyOffice API script
+            try
+            {
+                var apiUrl = Configuration["OnlyOffice:ApiUrl"] ?? "http://localhost:8080/web-apps/apps/api/documents/api.js";
+                await JS.InvokeVoidAsync("eval", $@"
+                    if (!document.getElementById('onlyoffice-api-script')) {{
+                        var script = document.createElement('script');
+                        script.id = 'onlyoffice-api-script';
+                        script.src = '{apiUrl}';
+                        script.onerror = function() {{
+                            console.error('Failed to load OnlyOffice API script');
+                        }};
+                        document.head.appendChild(script);
+                    }}
+                ");
+
+                // Load our custom editor script
+                await JS.InvokeVoidAsync("eval", $@"
+                    if (!document.getElementById('onlyoffice-editor-script')) {{
+                        var script = document.createElement('script');
+                        script.id = 'onlyoffice-editor-script';
+                        script.src = '/onlyoffice-editor.js';
+                        document.head.appendChild(script);
+                    }}
+                ");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error loading OnlyOffice scripts");
+            }
+        }
+
+        if (!string.IsNullOrEmpty(currentDocument) && !editorInitialized)
+        {
+            await InitializeEditor();
+        }
     }
 
     private async Task LoadDocuments()
@@ -188,7 +257,7 @@
             {
                 ShowStatus($"Documento '{filename}' creato con successo!", "success");
                 await LoadDocuments();
-                currentDocument = filename;
+                await OpenDocument(filename);
             }
             else
             {
@@ -231,10 +300,105 @@
         }
     }
 
-    private void OpenDocument(string filename)
+    private async Task OpenDocument(string filename)
     {
+        if (currentDocument == filename)
+            return;
+
+        // Destroy existing editor if any
+        if (editorInitialized)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("onlyOfficeEditor.destroy");
+            }
+            catch { }
+            editorInitialized = false;
+        }
+
         currentDocument = filename;
-        ShowStatus($"Documento '{filename}' aperto", "info");
+        editorError = false;
+        ShowStatus($"Apertura documento '{filename}'...", "info");
+        StateHasChanged();
+
+        // Wait a bit for the DOM to update
+        await Task.Delay(100);
+
+        await InitializeEditor();
+    }
+
+    private async Task InitializeEditor()
+    {
+        if (string.IsNullOrEmpty(currentDocument) || editorInitialized)
+            return;
+
+        isEditorLoading = true;
+        editorError = false;
+        StateHasChanged();
+
+        try
+        {
+            // Get editor configuration from backend
+            var config = await HttpClient.GetFromJsonAsync<EditorConfig>($"/api/documents/config/{currentDocument}");
+
+            if (config == null)
+            {
+                throw new Exception("Failed to get editor configuration");
+            }
+
+            // Wait for OnlyOffice API to be loaded
+            var maxAttempts = 20;
+            var attempts = 0;
+            while (attempts < maxAttempts)
+            {
+                try
+                {
+                    var isReady = await JS.InvokeAsync<bool>("eval", "typeof DocsAPI !== 'undefined' && typeof onlyOfficeEditor !== 'undefined'");
+                    if (isReady)
+                        break;
+                }
+                catch { }
+
+                await Task.Delay(500);
+                attempts++;
+            }
+
+            if (attempts >= maxAttempts)
+            {
+                throw new Exception("OnlyOffice API non caricata. Verifica che il Document Server sia in esecuzione.");
+            }
+
+            // Initialize the editor
+            var success = await JS.InvokeAsync<bool>("onlyOfficeEditor.init", config);
+
+            if (success)
+            {
+                editorInitialized = true;
+                ShowStatus($"Documento '{currentDocument}' aperto nell'editor", "success");
+            }
+            else
+            {
+                throw new Exception("Errore nell'inizializzazione dell'editor");
+            }
+        }
+        catch (Exception ex)
+        {
+            editorError = true;
+            editorInitialized = false;
+            ShowStatus($"Errore: {ex.Message}", "danger");
+        }
+        finally
+        {
+            isEditorLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RetryLoadEditor()
+    {
+        editorError = false;
+        editorInitialized = false;
+        await InitializeEditor();
     }
 
     private async Task DownloadDocument(string filename)
@@ -265,7 +429,7 @@
                     ShowStatus($"Documento '{filename}' eliminato", "success");
                     if (currentDocument == filename)
                     {
-                        currentDocument = "";
+                        await CloseDocument();
                     }
                     await LoadDocuments();
                 }
@@ -281,14 +445,20 @@
         }
     }
 
-    private async Task SaveCurrentDocument()
+    private async Task CloseDocument()
     {
-        ShowStatus($"Funzionalità di salvataggio per '{currentDocument}' - Implementazione OnlyOffice richiesta", "warning");
-    }
+        if (editorInitialized)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("onlyOfficeEditor.destroy");
+            }
+            catch { }
+        }
 
-    private void CloseDocument()
-    {
         currentDocument = "";
+        editorInitialized = false;
+        editorError = false;
         ShowStatus("Documento chiuso", "info");
     }
 
@@ -297,11 +467,25 @@
         statusMessage = message;
         statusType = type;
         StateHasChanged();
+
+        // Auto-hide after 5 seconds
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(5000);
+            await InvokeAsync(() =>
+            {
+                if (statusMessage == message) // Only clear if it's the same message
+                {
+                    ClearStatus();
+                }
+            });
+        });
     }
 
     private void ClearStatus()
     {
         statusMessage = "";
+        StateHasChanged();
     }
 
     private string FormatFileSize(long bytes)
@@ -322,5 +506,19 @@
         public string Name { get; set; } = "";
         public long Size { get; set; }
         public DateTime Modified { get; set; }
+    }
+
+    public class EditorConfig
+    {
+        public string DocumentType { get; set; } = "";
+        public string FileType { get; set; } = "";
+        public string Key { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string DocumentUrl { get; set; } = "";
+        public string CallbackUrl { get; set; } = "";
+        public string Mode { get; set; } = "";
+        public string UserId { get; set; } = "";
+        public string UserName { get; set; } = "";
+        public string ApiUrl { get; set; } = "";
     }
 }

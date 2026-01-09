@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using System.Text;
+using System.Text.Json;
+using System.Security.Cryptography;
 
 namespace BlazorOnlyOfficeProject.Controllers;
 
@@ -9,11 +11,15 @@ public class DocumentsController : ControllerBase
 {
     private readonly string _documentsPath;
     private readonly ILogger<DocumentsController> _logger;
+    private readonly IConfiguration _configuration;
+    private readonly IWebHostEnvironment _env;
 
-    public DocumentsController(IWebHostEnvironment env, ILogger<DocumentsController> logger)
+    public DocumentsController(IWebHostEnvironment env, ILogger<DocumentsController> logger, IConfiguration configuration)
     {
         _documentsPath = Path.Combine(env.WebRootPath, "documents");
         _logger = logger;
+        _configuration = configuration;
+        _env = env;
 
         // Ensure documents directory exists
         if (!Directory.Exists(_documentsPath))
@@ -174,6 +180,110 @@ public class DocumentsController : ControllerBase
         }
     }
 
+    [HttpGet("config/{filename}")]
+    public IActionResult GetEditorConfig(string filename)
+    {
+        try
+        {
+            var filePath = Path.Combine(_documentsPath, filename);
+
+            if (!System.IO.File.Exists(filePath))
+            {
+                return NotFound($"Document '{filename}' not found");
+            }
+
+            var baseUrl = $"{Request.Scheme}://{Request.Host}";
+            var documentUrl = $"{baseUrl}/api/documents/{filename}";
+            var callbackUrl = $"{baseUrl}/api/documents/callback";
+
+            // Generate unique key for document (based on filename and last modified time)
+            var fileInfo = new FileInfo(filePath);
+            var key = GenerateDocumentKey(filename, fileInfo.LastWriteTimeUtc);
+
+            var config = new
+            {
+                documentType = "word",
+                fileType = "docx",
+                key = key,
+                title = filename,
+                documentUrl = documentUrl,
+                callbackUrl = callbackUrl,
+                mode = "edit",
+                userId = "user1",
+                userName = "User",
+                apiUrl = _configuration["OnlyOffice:ApiUrl"] ?? "http://localhost:8080/web-apps/apps/api/documents/api.js"
+            };
+
+            return Ok(config);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Error getting editor config for {filename}");
+            return StatusCode(500, "Error getting editor configuration");
+        }
+    }
+
+    [HttpPost("callback")]
+    public async Task<IActionResult> OnlyOfficeCallback()
+    {
+        try
+        {
+            using var reader = new StreamReader(Request.Body);
+            var body = await reader.ReadToEndAsync();
+            _logger.LogInformation($"OnlyOffice Callback received: {body}");
+
+            var callback = JsonSerializer.Deserialize<OnlyOfficeCallback>(body, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            if (callback == null)
+            {
+                return BadRequest("Invalid callback data");
+            }
+
+            // Status values:
+            // 0 - Document not found
+            // 1 - Document editing
+            // 2 - Document ready for saving
+            // 3 - Document saving error
+            // 4 - Document closed with no changes
+            // 6 - Document being edited, force save requested
+            // 7 - Error force saving the document
+
+            if (callback.Status == 2 || callback.Status == 6)
+            {
+                // Document is ready to be saved
+                if (!string.IsNullOrEmpty(callback.Url))
+                {
+                    var filename = callback.Key?.Split('_')[0] + ".docx";
+                    var filePath = Path.Combine(_documentsPath, filename);
+
+                    using var httpClient = new HttpClient();
+                    var documentBytes = await httpClient.GetByteArrayAsync(callback.Url);
+                    await System.IO.File.WriteAllBytesAsync(filePath, documentBytes);
+
+                    _logger.LogInformation($"Document saved: {filename}");
+                }
+            }
+
+            return Ok(new { error = 0 });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing OnlyOffice callback");
+            return Ok(new { error = 1 });
+        }
+    }
+
+    private string GenerateDocumentKey(string filename, DateTime lastModified)
+    {
+        var input = $"{filename}_{lastModified:yyyyMMddHHmmss}";
+        using var md5 = MD5.Create();
+        var hash = md5.ComputeHash(Encoding.UTF8.GetBytes(input));
+        return BitConverter.ToString(hash).Replace("-", "").ToLower();
+    }
+
     private void CreateEmptyDocx(string filePath)
     {
         // Create a minimal DOCX file using the Open XML format
@@ -200,4 +310,12 @@ public class DocumentsController : ControllerBase
 public class CreateDocumentRequest
 {
     public string Filename { get; set; } = "";
+}
+
+public class OnlyOfficeCallback
+{
+    public int Status { get; set; }
+    public string? Url { get; set; }
+    public string? Key { get; set; }
+    public List<string>? Users { get; set; }
 }
