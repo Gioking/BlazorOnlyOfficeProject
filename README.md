@@ -104,46 +104,107 @@ Dopo l'avvio, l'applicazione sarà disponibile su:
 
 Naviga su `/document-editor` per accedere alla pagina di gestione documenti.
 
-## 📝 Note sull'Integrazione OnlyOffice
+## 📝 Integrazione OnlyOffice Document Editor
 
-L'applicazione include un placeholder per l'integrazione completa di OnlyOffice Document Editor.
+L'applicazione è completamente integrata con OnlyOffice Document Server per l'editing online di documenti Word.
 
-### Per Integrazione Completa
+### ✅ Funzionalità Implementate
 
-Per utilizzare l'editor OnlyOffice completo, è necessario:
+- ✅ **Editor OnlyOffice Completo** - Editing Word in browser
+- ✅ **Auto-Save** - Salvataggio automatico tramite callback
+- ✅ **Document Versioning** - Chiavi uniche per versioning
+- ✅ **Gestione Errori** - Messaggi di troubleshooting dettagliati
+- ✅ **Caricamento Dinamico** - Script API OnlyOffice caricati runtime
+- ✅ **Localizzazione Italiana** - UI e editor in italiano
 
-1. **Installare OnlyOffice Document Server**
-   - Self-hosted: https://github.com/ONLYOFFICE/DocumentServer
-   - Docker: `docker run -i -t -d -p 80:80 onlyoffice/documentserver`
-   - Cloud: OnlyOffice Cloud Service
+### 🚀 Setup OnlyOffice Document Server
 
-2. **Configurare l'Endpoint**
-   - Aggiungere l'URL del Document Server in `appsettings.json`
-   - Aggiornare `DocumentEditor.razor` con la configurazione API
+#### Opzione 1: Docker (Consigliata)
 
-3. **Implementare Callback**
-   - Callback URL per il salvataggio automatico
-   - Gestione degli eventi di editing
+```bash
+# Avvia OnlyOffice Document Server
+docker run -i -t -d -p 8080:80 --name onlyoffice-server onlyoffice/documentserver
 
-### Workflow Attuale
+# Verifica che sia in esecuzione
+docker ps | grep onlyoffice
 
-Attualmente l'applicazione supporta:
-- ✅ Creazione documenti vuoti (.docx)
-- ✅ Upload di documenti esistenti
-- ✅ Download per editing offline
-- ✅ Gestione completa del ciclo di vita dei documenti
+# Il server sarà disponibile su http://localhost:8080
+```
 
-Per editare i documenti:
-1. Scarica il documento tramite il pulsante "💾 Scarica"
-2. Modifica con Word, LibreOffice o altro editor
-3. Ricarica il documento tramite "📤 Carica Documento"
+#### Opzione 2: Installazione Manuale
+
+- Linux: https://github.com/ONLYOFFICE/DocumentServer
+- Windows: https://www.onlyoffice.com/download-docs.aspx
+- Cloud: OnlyOffice Cloud Service
+
+### ⚙️ Configurazione
+
+La configurazione è già presente in `appsettings.json`:
+
+```json
+{
+  "OnlyOffice": {
+    "DocumentServerUrl": "http://localhost:8080",
+    "ApiUrl": "http://localhost:8080/web-apps/apps/api/documents/api.js"
+  }
+}
+```
+
+**Nota:** Se il tuo Document Server è su una porta diversa, modifica queste impostazioni.
+
+### 🎯 Come Usare l'Editor
+
+1. **Avvia OnlyOffice Document Server** (vedi sopra)
+2. **Avvia l'applicazione Blazor**:
+   ```bash
+   dotnet run
+   ```
+3. **Naviga su** `http://localhost:5000/document-editor`
+4. **Crea o carica un documento**
+5. **Clicca sul documento** nella lista per aprirlo nell'editor
+6. **Modifica direttamente nel browser** - Le modifiche vengono salvate automaticamente!
+
+### 🔧 Troubleshooting
+
+**Errore: "Non è possibile connettersi al Document Server"**
+
+Verifica:
+1. Il container Docker è attivo: `docker ps | grep onlyoffice`
+2. Il server risponde: apri `http://localhost:8080` nel browser
+3. La porta 8080 non sia bloccata dal firewall
+4. La configurazione in `appsettings.json` sia corretta
+
+**Editor non si carica:**
+
+1. Apri la console del browser (F12)
+2. Verifica che non ci siano errori di CORS
+3. Controlla che lo script API venga caricato correttamente
+4. Riavvia il container OnlyOffice se necessario
+
+### 💡 Funzionalità Avanzate
+
+L'editor OnlyOffice supporta:
+- **Formattazione Completa** - Stili, font, colori, tabelle
+- **Immagini e Media** - Inserimento immagini, grafici, forme
+- **Collaborazione** - Editing multi-utente (configurazione aggiuntiva richiesta)
+- **Revisioni e Commenti** - Tracciamento modifiche
+- **Esportazione** - PDF, DOCX e altri formati
+
+### 📋 Endpoint API OnlyOffice
+
+| Endpoint | Descrizione |
+|----------|-------------|
+| `GET /api/documents/config/{filename}` | Ottieni configurazione editor |
+| `POST /api/documents/callback` | Callback per salvataggio automatico |
 
 ## 🎨 Tecnologie Utilizzate
 
 - **ASP.NET Core 8.0** - Framework backend
 - **Blazor Server** - UI interattiva
+- **OnlyOffice Document Server** - Editor documenti online
 - **Bootstrap 5** - Styling e componenti UI
 - **C# 12** - Linguaggio di programmazione
+- **JavaScript** - Integrazione OnlyOffice API
 - **Open XML** - Formato documenti Word
 
 ## 📦 Dipendenze
