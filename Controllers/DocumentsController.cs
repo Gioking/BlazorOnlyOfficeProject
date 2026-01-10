@@ -192,19 +192,37 @@ public class DocumentsController : ControllerBase
                 return NotFound($"Document '{filename}' not found");
             }
 
-            // Use host.docker.internal for OnlyOffice to reach the host machine from Docker container
-            var host = Request.Host.Host;
-            var port = Request.Host.Port ?? (Request.Scheme == "https" ? 443 : 80);
+            // Check if CallbackBaseUrl is configured in appsettings
+            var configuredBaseUrl = _configuration["OnlyOffice:CallbackBaseUrl"];
 
-            // Replace localhost with host.docker.internal for Docker compatibility
-            if (host == "localhost" || host == "127.0.0.1")
+            string baseUrl;
+            if (!string.IsNullOrEmpty(configuredBaseUrl))
             {
-                host = "host.docker.internal";
+                // Use configured base URL
+                baseUrl = configuredBaseUrl.TrimEnd('/');
+                _logger.LogInformation($"Using configured OnlyOffice CallbackBaseUrl: {baseUrl}");
             }
+            else
+            {
+                // Auto-detect base URL
+                var host = Request.Host.Host;
+                var port = Request.Host.Port ?? (Request.Scheme == "https" ? 443 : 80);
 
-            var baseUrl = port == 80 || port == 443
-                ? $"{Request.Scheme}://{host}"
-                : $"{Request.Scheme}://{host}:{port}";
+                // Replace localhost with host.docker.internal for Docker compatibility
+                if (host == "localhost" || host == "127.0.0.1")
+                {
+                    host = "host.docker.internal";
+                }
+
+                // Force HTTP for OnlyOffice to avoid certificate issues
+                var scheme = "http";
+
+                baseUrl = port == 80
+                    ? $"{scheme}://{host}"
+                    : $"{scheme}://{host}:{port}";
+
+                _logger.LogInformation($"Auto-detected OnlyOffice base URL: {baseUrl}");
+            }
 
             var documentUrl = $"{baseUrl}/api/documents/{filename}";
             var callbackUrl = $"{baseUrl}/api/documents/callback";
