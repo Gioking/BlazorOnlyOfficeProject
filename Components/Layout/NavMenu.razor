@@ -1,36 +1,30 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">BlazorOnlyOfficeProject</a>
+@inject NavigationManager Navigation
+
+<div class="nav-menu flex-grow-1 d-flex flex-column">
+    <nav class="nav flex-column p-3 flex-grow-1">
+        <NavLink class="nav-link nav-link-custom mb-2" href="" Match="NavLinkMatch.All">
+            <i class="bi bi-house-door-fill me-2"></i>
+            <span>Home</span>
+        </NavLink>
+
+        <NavLink class="nav-link nav-link-custom mb-2" href="document-editor">
+            <i class="bi bi-file-earmark-text-fill me-2"></i>
+            <span>Editor Documenti</span>
+        </NavLink>
+    </nav>
+
+    <div class="sidebar-footer p-3 border-top border-secondary text-muted small">
+        <div class="mb-1">
+            <i class="bi bi-server me-2"></i>
+            <span>OnlyOffice: localhost:8080</span>
+        </div>
+        <div>
+            <i class="bi bi-info-circle me-2"></i>
+            <span>v1.0.0 - .NET 9</span>
+        </div>
     </div>
 </div>
 
-<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+@code {
 
-<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
-    <nav class="flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
-            </NavLink>
-        </div>
-
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="counter">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Counter
-            </NavLink>
-        </div>
-
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="weather">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Weather
-            </NavLink>
-        </div>
-
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="document-editor">
-                <span class="bi bi-file-earmark-text-fill-nav-menu" aria-hidden="true"></span> Document Editor
-            </NavLink>
-        </div>
-    </nav>
-</div>
-
+}

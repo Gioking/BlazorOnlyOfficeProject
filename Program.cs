@@ -1,42 +1,55 @@
 using BlazorOnlyOfficeProject.Components;
-using Microsoft.AspNetCore.Components;
+using Serilog;
 
-var builder = WebApplication.CreateBuilder(args);
+// Configura Serilog
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.Console()
+    .WriteTo.File("logs/onlyoffice-.txt", rollingInterval: RollingInterval.Day)
+    .CreateLogger();
 
-// Add services to the container.
-builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
-
-builder.Services.AddControllers();
-
-builder.Services.AddHttpClient();
-builder.Services.AddScoped(sp => new HttpClient
+try
 {
-    BaseAddress = new Uri(sp.GetRequiredService<NavigationManager>().BaseUri)
-});
+    Log.Information("Avvio dell'applicazione OnlyOffice Blazor");
 
-var app = builder.Build();
+    var builder = WebApplication.CreateBuilder(args);
 
-// Configure the HTTP request pipeline.
-if (!app.Environment.IsDevelopment())
-{
-    app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
-    app.UseHsts();
+    // Aggiungi Serilog
+    builder.Host.UseSerilog();
+
+    // Add services to the container.
+    builder.Services.AddRazorComponents()
+        .AddInteractiveServerComponents();
+
+    builder.Services.AddControllers();
+
+    builder.Services.AddHttpClient();
+
+    var app = builder.Build();
+
+    // Configure the HTTP request pipeline.
+    if (!app.Environment.IsDevelopment())
+    {
+        app.UseExceptionHandler("/Error", createScopeForErrors: true);
+        app.UseHsts();
+    }
+
+    app.UseStaticFiles();
+    app.UseAntiforgery();
+
+    app.MapRazorComponents<App>()
+        .AddInteractiveServerRenderMode();
+
+    app.MapControllers();
+
+    Log.Information("Applicazione configurata, in ascolto su {BaseAddress}", builder.Configuration["urls"] ?? "http://localhost:5000");
+
+    app.Run();
 }
-
-// Disable HTTPS redirection in development for OnlyOffice compatibility
-if (!app.Environment.IsDevelopment())
+catch (Exception ex)
 {
-    app.UseHttpsRedirection();
+    Log.Fatal(ex, "Errore fatale durante l'avvio dell'applicazione");
 }
-
-app.UseStaticFiles();
-app.UseAntiforgery();
-
-app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
-
-app.MapControllers();
-
-app.Run();
+finally
+{
+    Log.CloseAndFlush();
+}

@@ -33,6 +33,8 @@ public class DocumentsController : ControllerBase
     {
         try
         {
+            _logger.LogInformation("Richiesta lista documenti dalla cartella: {Path}", _documentsPath);
+
             var files = Directory.GetFiles(_documentsPath, "*.docx")
                 .Select(f => new
                 {
@@ -43,11 +45,12 @@ public class DocumentsController : ControllerBase
                 .OrderByDescending(f => f.modified)
                 .ToList();
 
+            _logger.LogInformation("Trovati {Count} documenti", files.Count);
             return Ok(files);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting documents");
+            _logger.LogError(ex, "Errore nel recupero dei documenti");
             return StatusCode(500, "Error retrieving documents");
         }
     }
@@ -90,14 +93,17 @@ public class DocumentsController : ControllerBase
 
             var filePath = Path.Combine(_documentsPath, filename);
 
+            _logger.LogInformation("Creazione nuovo documento: {Filename} in {Path}", filename, filePath);
+
             // Create a minimal valid DOCX file (empty document)
             CreateEmptyDocx(filePath);
 
+            _logger.LogInformation("Documento creato con successo: {Filename}", filename);
             return Ok(new { filename, message = "Document created successfully" });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating document");
+            _logger.LogError(ex, "Errore durante la creazione del documento");
             return StatusCode(500, "Error creating document");
         }
     }
@@ -138,22 +144,26 @@ public class DocumentsController : ControllerBase
         {
             if (file == null || file.Length == 0)
             {
+                _logger.LogWarning("Tentativo di upload senza file");
                 return BadRequest("No file uploaded");
             }
 
             var filename = Path.GetFileName(file.FileName);
             var filePath = Path.Combine(_documentsPath, filename);
 
+            _logger.LogInformation("Upload documento: {Filename}, Dimensione: {Size} bytes", filename, file.Length);
+
             using (var stream = new FileStream(filePath, FileMode.Create))
             {
                 await file.CopyToAsync(stream);
             }
 
+            _logger.LogInformation("Documento caricato con successo: {Filename}", filename);
             return Ok(new { filename, message = "Document uploaded successfully" });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error uploading document");
+            _logger.LogError(ex, "Errore durante l'upload del documento");
             return StatusCode(500, "Error uploading document");
         }
     }
@@ -165,17 +175,21 @@ public class DocumentsController : ControllerBase
         {
             var filePath = Path.Combine(_documentsPath, filename);
 
+            _logger.LogInformation("Richiesta eliminazione documento: {Filename}", filename);
+
             if (!System.IO.File.Exists(filePath))
             {
+                _logger.LogWarning("Documento non trovato: {Filename}", filename);
                 return NotFound($"Document '{filename}' not found");
             }
 
             System.IO.File.Delete(filePath);
+            _logger.LogInformation("Documento eliminato con successo: {Filename}", filename);
             return Ok(new { message = "Document deleted successfully" });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, $"Error deleting document {filename}");
+            _logger.LogError(ex, "Errore durante l'eliminazione del documento: {Filename}", filename);
             return StatusCode(500, "Error deleting document");
         }
     }
