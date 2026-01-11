@@ -1,0 +1,73 @@
+@page "/"
+
+<PageTitle>Home - OnlyOffice Blazor</PageTitle>
+
+<div class="container-fluid h-100 d-flex align-items-center justify-content-center">
+    <div class="row justify-content-center w-100">
+        <div class="col-lg-8 col-xl-6">
+            <div class="card fade-in">
+                <div class="card-body p-5 text-center">
+                    <div class="mb-4">
+                        <i class="bi bi-file-earmark-text-fill" style="font-size: 4rem; color: var(--dark-accent);"></i>
+                    </div>
+                    <h1 class="display-4 mb-3">Benvenuto in OnlyOffice Blazor</h1>
+                    <p class="lead text-muted mb-4">
+                        Editor di documenti potente e moderno con integrazione OnlyOffice Document Server
+                    </p>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <div class="card bg-dark-subtle border-0 h-100">
+                                <div class="card-body">
+                                    <i class="bi bi-lightning-charge-fill text-warning" style="font-size: 2rem;"></i>
+                                    <h5 class="mt-3">Blazor Server</h5>
+                                    <p class="small text-muted mb-0">Basato su .NET 9 con rendering interattivo</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card bg-dark-subtle border-0 h-100">
+                                <div class="card-body">
+                                    <i class="bi bi-file-earmark-word-fill text-primary" style="font-size: 2rem;"></i>
+                                    <h5 class="mt-3">OnlyOffice</h5>
+                                    <p class="small text-muted mb-0">Editor documenti professionale integrato</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-block">
+                        <a href="/editor" class="btn btn-primary btn-lg px-5">
+                            <i class="bi bi-arrow-right-circle-fill me-2"></i>
+                            Inizia ad Editare
+                        </a>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <div class="row g-3 small">
+                        <div class="col-4">
+                            <i class="bi bi-moon-stars-fill text-info"></i>
+                            <div class="mt-2 text-muted">Tema Scuro</div>
+                        </div>
+                        <div class="col-4">
+                            <i class="bi bi-bootstrap-fill text-purple"></i>
+                            <div class="mt-2 text-muted">Bootstrap 5</div>
+                        </div>
+                        <div class="col-4">
+                            <i class="bi bi-journal-code text-success"></i>
+                            <div class="mt-2 text-muted">Serilog</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-center mt-4">
+                <p class="text-muted small">
+                    <i class="bi bi-server me-2"></i>
+                    OnlyOffice Document Server: <span class="badge bg-success">Online</span> localhost:8080
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
