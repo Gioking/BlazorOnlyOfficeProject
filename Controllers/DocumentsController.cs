@@ -276,14 +276,50 @@ public class DocumentsController : ControllerBase
             using var reader = new StreamReader(Request.Body);
             var body = await reader.ReadToEndAsync();
 
-            _logger.LogDebug("Callback OnlyOffice body: {Body}", body);
+            _logger.LogDebug("Callback body: {Body}", body);
+
+            // Deserializza il callback
+            var callback = JsonSerializer.Deserialize<OnlyOfficeCallback>(body, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            if (callback == null)
+            {
+                _logger.LogWarning("Callback deserializzazione fallita");
+                return BadRequest(new { error = 1 });
+            }
+
+            _logger.LogInformation("Callback status: {Status}, Key: {Key}", callback.Status, callback.Key);
+
+            // Status 2 = documento salvato e ancora aperto
+            // Status 4 = documento chiuso (ultima versione)
+            if (callback.Status == 2 || callback.Status == 4)
+            {
+                if (!string.IsNullOrEmpty(callback.Url))
+                {
+                    // Scarica il documento salvato da OnlyOffice
+                    using var httpClient = new HttpClient();
+                    var documentBytes = await httpClient.GetByteArrayAsync(callback.Url);
+
+                    // Estrai il filename dalla key
+                    var key = callback.Key ?? "";
+                    var filename = key.Contains('_') ? key.Substring(0, key.LastIndexOf('_')) : key;
+                    var filePath = Path.Combine(_documentsPath, filename);
+
+                    // Salva il documento
+                    await System.IO.File.WriteAllBytesAsync(filePath, documentBytes);
+
+                    _logger.LogInformation("Documento salvato: {Filename}, Size: {Size} bytes", filename, documentBytes.Length);
+                }
+            }
 
             return Ok(new { error = 0 });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Errore nel salvataggio del documento da callback OnlyOffice");
-            return StatusCode(500, "Error saving document");
+            _logger.LogError(ex, "Errore nel salvataggio del documento");
+            return Ok(new { error = 1 });
         }
     }
 
@@ -374,5 +410,13 @@ public class DocumentsController : ControllerBase
     public class CreateDocumentRequest
     {
         public string Filename { get; set; } = "";
+    }
+
+    public class OnlyOfficeCallback
+    {
+        public int Status { get; set; }
+        public string? Key { get; set; }
+        public string? Url { get; set; }
+        public List<string>? Users { get; set; }
     }
 }
