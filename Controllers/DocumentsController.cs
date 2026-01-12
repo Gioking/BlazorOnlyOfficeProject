@@ -1,6 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using System.IO.Compression;
 using System.Text;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text.Json;
+using Microsoft.IdentityModel.Tokens;
 
 namespace OnlyOfficeBlazor.Controllers;
 
@@ -183,26 +187,51 @@ public class DocumentsController : ControllerBase
             }
 
             var documentServerUrl = _configuration["OnlyOffice:DocumentServerUrl"] ?? "http://localhost:8080";
-            var baseUrl = $"{Request.Scheme}://{Request.Host}";
-            var documentUrl = $"{baseUrl}/api/documents/{filename}";
-            var callbackUrl = $"{baseUrl}/api/documents/save";
+
+            // CRITICAL: OnlyOffice container deve raggiungere il tuo PC host
+            // host.docker.internal risolve all'IP del PC host da dentro il container
+            var documentUrl = $"http://192.168.2.10:5000/api/documents/{filename}";
+            var callbackUrl = $"http://192.168.2.10:5000/api/documents/save";
+
             var key = $"{filename}_{DateTime.Now.Ticks}";
 
-            var config = new
+            // Struttura config OnlyOffice
+            var configPayload = new
             {
                 documentType = "word",
-                fileType = "docx",
-                key = key,
-                title = filename,
-                documentUrl = documentUrl,
-                callbackUrl = callbackUrl,
-                mode = "edit",
-                userId = "user1",
-                userName = "User",
+                document = new
+                {
+                    fileType = "docx",
+                    key = key,
+                    title = filename,
+                    url = documentUrl
+                },
+                editorConfig = new
+                {
+                    mode = "edit",
+                    callbackUrl = callbackUrl,
+                    user = new
+                    {
+                        id = "user1",
+                        name = "User"
+                    }
+                }
+            };
+
+            // Genera JWT token
+            var token = GenerateJwtToken(configPayload);
+
+            // Config finale con token
+            var config = new
+            {
+                documentType = configPayload.documentType,
+                document = configPayload.document,
+                editorConfig = configPayload.editorConfig,
+                token = token,
                 apiUrl = _configuration["OnlyOffice:ApiUrl"] ?? $"{documentServerUrl}/web-apps/apps/api/documents/api.js"
             };
 
-            _logger.LogInformation("Configurazione editor generata per documento: {Filename}, Key: {Key}", filename, key);
+            _logger.LogInformation("Configurazione editor con JWT generata. DocumentUrl: {Url}", documentUrl);
             return Ok(config);
         }
         catch (Exception ex)
@@ -286,6 +315,33 @@ public class DocumentsController : ControllerBase
         }
 
         _logger.LogDebug("Documento DOCX vuoto creato con successo");
+    }
+
+    private string GenerateJwtToken(object payload)
+    {
+        var secret = _configuration["OnlyOffice:JwtSecret"];
+        if (string.IsNullOrEmpty(secret))
+        {
+            throw new InvalidOperationException("OnlyOffice:JwtSecret non configurato");
+        }
+
+        var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
+        var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
+
+        var payloadJson = JsonSerializer.Serialize(payload);
+
+        var claims = new[]
+        {
+        new Claim("payload", payloadJson)
+    };
+
+        var token = new JwtSecurityToken(
+            claims: claims,
+            expires: DateTime.UtcNow.AddHours(5),
+            signingCredentials: credentials
+        );
+
+        return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
     public class CreateDocumentRequest

@@ -1,8 +1,8 @@
 @page "/editor"
 @rendermode InteractiveServer
-@inject HttpClient HttpClient
-@inject IConfiguration Configuration
+@inject IHttpClientFactory HttpClientFactory
 @inject NavigationManager Navigation
+@inject IConfiguration Configuration
 @inject IJSRuntime JS
 @inject ILogger<Editor> Logger
 
@@ -57,7 +57,7 @@
                                         </h6>
                                         <small class="@(currentDocument == doc.Name ? "text-white-50" : "text-muted")">
                                             <i class="bi bi-hdd me-1"></i>@FormatFileSize(doc.Size)
-                                            <br/>
+                                            <br />
                                             <i class="bi bi-clock me-1"></i>@doc.Modified.ToString("dd/MM/yyyy HH:mm")
                                         </small>
                                     </div>
@@ -116,16 +116,16 @@
                     <div class="alert alert-danger">
                         <h5><i class="bi bi-exclamation-triangle me-2"></i>Errore OnlyOffice Document Server</h5>
                         <p>Non è possibile connettersi al Document Server OnlyOffice.</p>
-                        <hr/>
+                        <hr />
                         <p class="mb-2"><strong>Verifica che:</strong></p>
                         <ol>
                             <li>OnlyOffice Document Server sia in esecuzione</li>
                             <li>Il container Docker sia attivo: <code>docker ps | grep onlyoffice</code></li>
                             <li>Il server sia accessibile su: <code>@(Configuration["OnlyOffice:DocumentServerUrl"] ?? "http://localhost:8080")</code></li>
                         </ol>
-                        <hr/>
+                        <hr />
                         <p class="mb-0">
-                            <strong>Per avviare il container:</strong><br/>
+                            <strong>Per avviare il container:</strong><br />
                             <code>docker run -i -t -d -p 8080:80 --name onlyoffice-server onlyoffice/documentserver</code>
                         </p>
                         <button class="btn btn-primary mt-3" @onclick="RetryLoadEditor">
@@ -176,6 +176,13 @@
     private bool editorInitialized = false;
     private bool editorReady = false;
 
+    private HttpClient GetHttpClient()
+    {
+        var client = HttpClientFactory.CreateClient();
+        client.BaseAddress = new Uri(Navigation.BaseUri);
+        return client;
+    }
+
     protected override async Task OnInitializedAsync()
     {
         Logger.LogInformation("Inizializzazione pagina Editor");
@@ -187,8 +194,6 @@
         if (firstRender)
         {
             Logger.LogInformation("Primo rendering della pagina Editor");
-
-            // CARICA L'EDITOR VUOTO ALL'AVVIO - SEMPRE VISIBILE
             await Task.Delay(500);
             await InitializeEmptyEditor();
         }
@@ -202,13 +207,12 @@
 
     private async Task InitializeEmptyEditor()
     {
-        Logger.LogInformation("Inizializzazione editor vuoto - L'editor sarà visibile anche senza documenti");
+        Logger.LogInformation("Inizializzazione editor vuoto");
         isEditorLoading = true;
         StateHasChanged();
 
         try
         {
-            // Attendi che l'API OnlyOffice sia caricata
             var maxAttempts = 20;
             var attempts = 0;
             while (attempts < maxAttempts)
@@ -218,13 +222,13 @@
                     var isReady = await JS.InvokeAsync<bool>("eval", "typeof DocsAPI !== 'undefined' && typeof onlyOfficeEditor !== 'undefined'");
                     if (isReady)
                     {
-                        Logger.LogInformation("API OnlyOffice caricata correttamente dopo {Attempts} tentativi", attempts + 1);
+                        Logger.LogInformation("API OnlyOffice caricata dopo {Attempts} tentativi", attempts + 1);
                         break;
                     }
                 }
                 catch (Exception ex)
                 {
-                    Logger.LogDebug(ex, "Tentativo {Attempt} di caricare API OnlyOffice fallito", attempts + 1);
+                    Logger.LogDebug(ex, "Tentativo {Attempt} fallito", attempts + 1);
                 }
 
                 await Task.Delay(500);
@@ -233,20 +237,20 @@
 
             if (attempts >= maxAttempts)
             {
-                Logger.LogError("Impossibile caricare l'API OnlyOffice dopo {MaxAttempts} tentativi", maxAttempts);
+                Logger.LogError("Impossibile caricare API OnlyOffice");
                 editorError = true;
-                ShowStatus("Impossibile caricare OnlyOffice. Verifica che il Document Server sia in esecuzione.", "danger");
+                ShowStatus("Impossibile caricare OnlyOffice", "danger");
             }
             else
             {
                 editorReady = true;
-                Logger.LogInformation("Editor OnlyOffice pronto per l'uso - L'editor è ora visibile");
-                ShowStatus("Editor OnlyOffice caricato e pronto", "success");
+                Logger.LogInformation("Editor OnlyOffice pronto");
+                ShowStatus("Editor OnlyOffice pronto", "success");
             }
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Errore durante l'inizializzazione dell'editor vuoto");
+            Logger.LogError(ex, "Errore inizializzazione editor vuoto");
             editorError = true;
             ShowStatus($"Errore: {ex.Message}", "danger");
         }
@@ -259,18 +263,19 @@
 
     private async Task LoadDocuments()
     {
-        Logger.LogInformation("Caricamento lista documenti da wwwroot/documents");
+        Logger.LogInformation("Caricamento documenti");
         isLoading = true;
         try
         {
-            var response = await HttpClient.GetFromJsonAsync<List<DocumentInfo>>("/api/documents");
+            var client = GetHttpClient();
+            var response = await client.GetFromJsonAsync<List<DocumentInfo>>("/api/documents");
             documents = response ?? new List<DocumentInfo>();
-            Logger.LogInformation("Caricati {Count} documenti dalla cartella wwwroot/documents", documents.Count);
+            Logger.LogInformation("Caricati {Count} documenti", documents.Count);
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Errore nel caricamento dei documenti");
-            ShowStatus($"Errore nel caricamento dei documenti: {ex.Message}", "danger");
+            Logger.LogError(ex, "Errore caricamento documenti");
+            ShowStatus($"Errore: {ex.Message}", "danger");
         }
         finally
         {
@@ -284,31 +289,32 @@
         try
         {
             var filename = $"Nuovo_Documento_{DateTime.Now:yyyyMMdd_HHmmss}.docx";
-            var response = await HttpClient.PostAsJsonAsync("/api/documents/create", new { Filename = filename });
+            var client = GetHttpClient();
+            var response = await client.PostAsJsonAsync("/api/documents/create", new { Filename = filename });
 
             if (response.IsSuccessStatusCode)
             {
-                Logger.LogInformation("Documento creato con successo: {Filename}", filename);
-                ShowStatus($"Documento '{filename}' creato con successo!", "success");
+                Logger.LogInformation("Documento creato: {Filename}", filename);
+                ShowStatus($"Documento '{filename}' creato!", "success");
                 await LoadDocuments();
                 await OpenDocument(filename);
             }
             else
             {
-                Logger.LogWarning("Errore nella creazione del documento. Status: {Status}", response.StatusCode);
-                ShowStatus("Errore nella creazione del documento", "danger");
+                Logger.LogWarning("Errore creazione. Status: {Status}", response.StatusCode);
+                ShowStatus("Errore nella creazione", "danger");
             }
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Errore durante la creazione del documento");
+            Logger.LogError(ex, "Errore creazione documento");
             ShowStatus($"Errore: {ex.Message}", "danger");
         }
     }
 
     private async Task HandleFileUpload(InputFileChangeEventArgs e)
     {
-        Logger.LogInformation("Upload documento: {Filename}", e.File.Name);
+        Logger.LogInformation("Upload: {Filename}", e.File.Name);
         try
         {
             var file = e.File;
@@ -318,56 +324,52 @@
                 var fileContent = new StreamContent(file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024));
                 content.Add(fileContent, "file", file.Name);
 
-                var response = await HttpClient.PostAsync("/api/documents/upload", content);
+                var client = GetHttpClient();
+                var response = await client.PostAsync("/api/documents/upload", content);
 
                 if (response.IsSuccessStatusCode)
                 {
-                    Logger.LogInformation("Documento caricato con successo: {Filename}, Size: {Size}", file.Name, file.Size);
-                    ShowStatus($"Documento '{file.Name}' caricato con successo!", "success");
+                    Logger.LogInformation("Documento caricato: {Filename}", file.Name);
+                    ShowStatus($"Documento '{file.Name}' caricato!", "success");
                     await LoadDocuments();
                 }
                 else
                 {
-                    Logger.LogWarning("Errore nel caricamento del documento. Status: {Status}", response.StatusCode);
-                    ShowStatus("Errore nel caricamento del documento", "danger");
+                    Logger.LogWarning("Errore upload. Status: {Status}", response.StatusCode);
+                    ShowStatus("Errore caricamento", "danger");
                 }
             }
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Errore durante l'upload del documento");
+            Logger.LogError(ex, "Errore upload");
             ShowStatus($"Errore: {ex.Message}", "danger");
         }
     }
 
     private async Task OpenDocument(string filename)
     {
-        Logger.LogInformation("Apertura documento: {Filename}", filename);
+        Logger.LogInformation("Apertura: {Filename}", filename);
 
         if (currentDocument == filename)
-        {
-            Logger.LogDebug("Documento già aperto: {Filename}", filename);
             return;
-        }
 
-        // Distruggi editor esistente
         if (editorInitialized)
         {
-            Logger.LogDebug("Distruzione editor esistente");
             try
             {
                 await JS.InvokeVoidAsync("onlyOfficeEditor.destroy");
             }
             catch (Exception ex)
             {
-                Logger.LogWarning(ex, "Errore durante la distruzione dell'editor");
+                Logger.LogWarning(ex, "Errore distruzione editor");
             }
             editorInitialized = false;
         }
 
         currentDocument = filename;
         editorError = false;
-        ShowStatus($"Apertura documento '{filename}'...", "info");
+        ShowStatus($"Apertura '{filename}'...", "info");
         StateHasChanged();
 
         await Task.Delay(100);
@@ -379,42 +381,41 @@
         if (string.IsNullOrEmpty(currentDocument) || editorInitialized)
             return;
 
-        Logger.LogInformation("Inizializzazione editor per documento: {Document}", currentDocument);
+        Logger.LogInformation("Inizializzazione editor: {Document}", currentDocument);
         isEditorLoading = true;
         editorError = false;
         StateHasChanged();
 
         try
         {
-            // Ottieni configurazione editor dal backend
-            var config = await HttpClient.GetFromJsonAsync<EditorConfig>($"/api/documents/config/{currentDocument}");
+            var client = GetHttpClient();
+            var config = await client.GetFromJsonAsync<EditorConfig>($"/api/documents/config/{currentDocument}");
 
             if (config == null)
             {
-                Logger.LogError("Impossibile ottenere la configurazione dell'editor per: {Document}", currentDocument);
+                Logger.LogError("Config non disponibile per: {Document}", currentDocument);
                 throw new Exception("Failed to get editor configuration");
             }
 
-            Logger.LogDebug("Configurazione editor ricevuta - Key: {Key}, URL: {Url}", config.Key, config.DocumentUrl);
+            Logger.LogDebug("Config ricevuta - Key: {Key}", config.Key);
 
-            // Inizializza l'editor
             var success = await JS.InvokeAsync<bool>("onlyOfficeEditor.init", config);
 
             if (success)
             {
                 editorInitialized = true;
-                Logger.LogInformation("Editor inizializzato con successo per: {Document}", currentDocument);
-                ShowStatus($"Documento '{currentDocument}' aperto nell'editor", "success");
+                Logger.LogInformation("Editor inizializzato: {Document}", currentDocument);
+                ShowStatus($"Documento '{currentDocument}' aperto", "success");
             }
             else
             {
-                Logger.LogError("Errore nell'inizializzazione dell'editor per: {Document}", currentDocument);
+                Logger.LogError("Errore inizializzazione editor");
                 throw new Exception("Errore nell'inizializzazione dell'editor");
             }
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Errore durante l'inizializzazione dell'editor per: {Document}", currentDocument);
+            Logger.LogError(ex, "Errore editor: {Document}", currentDocument);
             editorError = true;
             editorInitialized = false;
             ShowStatus($"Errore: {ex.Message}", "danger");
@@ -428,7 +429,7 @@
 
     private async Task RetryLoadEditor()
     {
-        Logger.LogInformation("Nuovo tentativo di caricamento editor");
+        Logger.LogInformation("Retry editor");
         editorError = false;
         editorInitialized = false;
         editorReady = false;
@@ -437,57 +438,56 @@
 
     private async Task DownloadDocument(string filename)
     {
-        Logger.LogInformation("Download documento: {Filename}", filename);
+        Logger.LogInformation("Download: {Filename}", filename);
         try
         {
             var url = $"/api/documents/{filename}";
             await JS.InvokeVoidAsync("open", url, "_blank");
-            ShowStatus($"Download di '{filename}' avviato", "success");
+            ShowStatus($"Download '{filename}' avviato", "success");
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Errore durante il download del documento: {Filename}", filename);
-            ShowStatus($"Errore nel download: {ex.Message}", "danger");
+            Logger.LogError(ex, "Errore download: {Filename}", filename);
+            ShowStatus($"Errore: {ex.Message}", "danger");
         }
     }
 
     private async Task DeleteDocument(string filename)
     {
-        Logger.LogInformation("Richiesta eliminazione documento: {Filename}", filename);
+        Logger.LogInformation("Eliminazione: {Filename}", filename);
         try
         {
-            var confirmed = await JS.InvokeAsync<bool>("confirm", $"Sei sicuro di voler eliminare '{filename}'?");
+            var confirmed = await JS.InvokeAsync<bool>("confirm", $"Eliminare '{filename}'?");
             if (confirmed)
             {
-                var response = await HttpClient.DeleteAsync($"/api/documents/{filename}");
+                var client = GetHttpClient();
+                var response = await client.DeleteAsync($"/api/documents/{filename}");
 
                 if (response.IsSuccessStatusCode)
                 {
-                    Logger.LogInformation("Documento eliminato con successo: {Filename}", filename);
-                    ShowStatus($"Documento '{filename}' eliminato", "success");
+                    Logger.LogInformation("Eliminato: {Filename}", filename);
+                    ShowStatus($"'{filename}' eliminato", "success");
                     if (currentDocument == filename)
-                    {
                         await CloseDocument();
-                    }
                     await LoadDocuments();
                 }
                 else
                 {
-                    Logger.LogWarning("Errore nell'eliminazione del documento. Status: {Status}", response.StatusCode);
-                    ShowStatus("Errore nell'eliminazione del documento", "danger");
+                    Logger.LogWarning("Errore eliminazione. Status: {Status}", response.StatusCode);
+                    ShowStatus("Errore eliminazione", "danger");
                 }
             }
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Errore durante l'eliminazione del documento: {Filename}", filename);
+            Logger.LogError(ex, "Errore eliminazione: {Filename}", filename);
             ShowStatus($"Errore: {ex.Message}", "danger");
         }
     }
 
     private async Task CloseDocument()
     {
-        Logger.LogInformation("Chiusura documento: {Document}", currentDocument);
+        Logger.LogInformation("Chiusura: {Document}", currentDocument);
         if (editorInitialized)
         {
             try
@@ -496,7 +496,7 @@
             }
             catch (Exception ex)
             {
-                Logger.LogWarning(ex, "Errore durante la chiusura dell'editor");
+                Logger.LogWarning(ex, "Errore chiusura editor");
             }
         }
 
@@ -508,7 +508,6 @@
 
     private void ShowStatus(string message, string type)
     {
-        Logger.LogDebug("Status message: {Message} ({Type})", message, type);
         statusMessage = message;
         statusType = type;
         StateHasChanged();
@@ -519,9 +518,7 @@
             await InvokeAsync(() =>
             {
                 if (statusMessage == message)
-                {
                     ClearStatus();
-                }
             });
         });
     }

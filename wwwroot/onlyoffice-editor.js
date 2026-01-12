@@ -1,6 +1,5 @@
 // OnlyOffice Document Editor Integration
 // Questo file gestisce l'integrazione con OnlyOffice Document Server
-
 let docEditor = null;
 
 window.onlyOfficeEditor = {
@@ -14,13 +13,13 @@ window.onlyOfficeEditor = {
         }
 
         try {
-            docEditor = new DocsAPI.DocEditor("onlyoffice-editor", {
+            const editorConfig = {
                 documentType: config.documentType || "word",
                 document: {
-                    fileType: config.fileType || "docx",
-                    key: config.key,
-                    title: config.title,
-                    url: config.documentUrl,
+                    fileType: config.document?.fileType || config.fileType || "docx",
+                    key: config.document?.key || config.key,
+                    title: config.document?.title || config.title,
+                    url: config.document?.url || config.documentUrl,
                     permissions: {
                         comment: true,
                         download: true,
@@ -33,12 +32,12 @@ window.onlyOfficeEditor = {
                     }
                 },
                 editorConfig: {
-                    mode: config.mode || "edit",
+                    mode: config.editorConfig?.mode || config.mode || "edit",
                     lang: "it",
-                    callbackUrl: config.callbackUrl,
+                    callbackUrl: config.editorConfig?.callbackUrl || config.callbackUrl,
                     user: {
-                        id: config.userId || "user1",
-                        name: config.userName || "User"
+                        id: config.editorConfig?.user?.id || config.userId || "user1",
+                        name: config.editorConfig?.user?.name || config.userName || "User"
                     },
                     customization: {
                         autosave: true,
@@ -72,7 +71,19 @@ window.onlyOfficeEditor = {
                         console.info('Info OnlyOffice Editor:', event);
                     }
                 }
-            });
+            };
+
+            // *** PARTE CRITICA: Aggiungi il token JWT se presente ***
+            if (config.token) {
+                editorConfig.token = config.token;
+                console.log('Token JWT aggiunto alla configurazione');
+            } else {
+                console.warn('Nessun token JWT fornito - OnlyOffice potrebbe rifiutare la connessione');
+            }
+
+            console.log('Configurazione finale editor:', editorConfig);
+
+            docEditor = new DocsAPI.DocEditor("onlyoffice-editor", editorConfig);
 
             console.log('OnlyOffice Editor inizializzato con successo');
             return true;

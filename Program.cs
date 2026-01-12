@@ -13,6 +13,12 @@ try
 
     var builder = WebApplication.CreateBuilder(args);
 
+    // CONFIGURA KESTREL per ascoltare su tutte le interfacce
+    builder.WebHost.ConfigureKestrel(options =>
+    {
+        options.ListenAnyIP(5000); // Ascolta su 0.0.0.0:5000
+    });
+
     // Aggiungi Serilog
     builder.Host.UseSerilog();
 
@@ -40,7 +46,7 @@ try
 
     app.MapControllers();
 
-    Log.Information("Applicazione OnlyOfficeBlazor avviata su {Urls}", builder.Configuration["urls"] ?? "http://localhost:5000");
+    Log.Information("Applicazione OnlyOfficeBlazor avviata e in ascolto su http://0.0.0.0:5000");
 
     app.Run();
 }
