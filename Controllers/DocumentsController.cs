@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.Mvc;
-using System.IO.Compression;
-using System.Text;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text.Json;
 using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.IO.Compression;
+using System.Net;
+using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 
 namespace OnlyOfficeBlazor.Controllers;
 
@@ -187,15 +189,11 @@ public class DocumentsController : ControllerBase
             }
 
             var documentServerUrl = _configuration["OnlyOffice:DocumentServerUrl"] ?? "http://localhost:8080";
-
-            // CRITICAL: OnlyOffice container deve raggiungere il tuo PC host
-            // host.docker.internal risolve all'IP del PC host da dentro il container
             var documentUrl = $"http://192.168.2.10:5000/api/documents/{filename}";
             var callbackUrl = $"http://192.168.2.10:5000/api/documents/save";
-
             var key = $"{filename}_{DateTime.Now.Ticks}";
 
-            // Struttura config OnlyOffice
+            // Struttura config per il browser
             var configPayload = new
             {
                 documentType = "word",
@@ -218,10 +216,37 @@ public class DocumentsController : ControllerBase
                 }
             };
 
-            // Genera JWT token
+            // IMPORTANTE: Il payload JWT deve avere solo le proprietà principali in FLAT
+            var jwtPayload = new
+            {
+                document = new
+                {
+                    key = key,
+                    url = documentUrl,
+                    title = filename,
+                    fileType = "docx"
+                },
+                editorConfig = new
+                {
+                    mode = "edit",
+                    callbackUrl = callbackUrl
+                }
+            };
+
+            // Genera JWT token con il payload FLAT
             var token = GenerateJwtToken(configPayload);
 
-            // Config finale con token
+            // LOG TEMPORANEO - per debug
+            var handler = new JwtSecurityTokenHandler();
+            var jwtToken = handler.ReadJwtToken(token);
+            _logger.LogWarning("JWT Claims:");
+            foreach (var claim in jwtToken.Claims)
+            {
+                _logger.LogWarning("  {Type}: {Value}", claim.Type, claim.Value);
+            }
+
+
+            // Config finale
             var config = new
             {
                 documentType = configPayload.documentType,
@@ -317,7 +342,7 @@ public class DocumentsController : ControllerBase
         _logger.LogDebug("Documento DOCX vuoto creato con successo");
     }
 
-    private string GenerateJwtToken(object payload)
+    private string GenerateJwtToken(object configPayload)
     {
         var secret = _configuration["OnlyOffice:JwtSecret"];
         if (string.IsNullOrEmpty(secret))
@@ -325,23 +350,25 @@ public class DocumentsController : ControllerBase
             throw new InvalidOperationException("OnlyOffice:JwtSecret non configurato");
         }
 
-        var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
-        var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
-
-        var payloadJson = JsonSerializer.Serialize(payload);
-
-        var claims = new[]
+        // Serializza come JSON
+        var payloadJson = JsonSerializer.Serialize(configPayload, new JsonSerializerOptions
         {
-        new Claim("payload", payloadJson)
-    };
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        });
 
-        var token = new JwtSecurityToken(
-            claims: claims,
-            expires: DateTime.UtcNow.AddHours(5),
-            signingCredentials: credentials
-        );
+        // Crea il token JWT manualmente
+        var header = "{\"alg\":\"HS256\",\"typ\":\"JWT\"}";
+        var headerEncoded = Base64UrlEncoder.Encode(header);
+        var payloadEncoded = Base64UrlEncoder.Encode(payloadJson);
 
-        return new JwtSecurityTokenHandler().WriteToken(token);
+        using (var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret)))
+        {
+            var bytesToSign = Encoding.UTF8.GetBytes($"{headerEncoded}.{payloadEncoded}");
+            var hash = hmac.ComputeHash(bytesToSign);
+            var signatureEncoded = Base64UrlEncoder.Encode(hash);
+
+            return $"{headerEncoded}.{payloadEncoded}.{signatureEncoded}";
+        }
     }
 
     public class CreateDocumentRequest

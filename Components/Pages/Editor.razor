@@ -5,6 +5,7 @@
 @inject IConfiguration Configuration
 @inject IJSRuntime JS
 @inject ILogger<Editor> Logger
+@using System.Text.Json.Serialization
 
 <PageTitle>Editor Documenti - OnlyOffice Blazor</PageTitle>
 
@@ -389,7 +390,7 @@
         try
         {
             var client = GetHttpClient();
-            var config = await client.GetFromJsonAsync<EditorConfig>($"/api/documents/config/{currentDocument}");
+            var config = await client.GetFromJsonAsync<OnlyOfficeConfig>($"/api/documents/config/{currentDocument}");
 
             if (config == null)
             {
@@ -397,7 +398,7 @@
                 throw new Exception("Failed to get editor configuration");
             }
 
-            Logger.LogDebug("Config ricevuta - Key: {Key}", config.Key);
+            Logger.LogDebug("Config ricevuta - Key: {Key}", config.Document?.Key ?? "N/A");
 
             var success = await JS.InvokeAsync<bool>("onlyOfficeEditor.init", config);
 
@@ -549,17 +550,57 @@
         public DateTime Modified { get; set; }
     }
 
-    public class EditorConfig
+    public class OnlyOfficeConfig  // <- RINOMINATA
     {
+        [JsonPropertyName("documentType")]
         public string DocumentType { get; set; } = "";
-        public string FileType { get; set; } = "";
-        public string Key { get; set; } = "";
-        public string Title { get; set; } = "";
-        public string DocumentUrl { get; set; } = "";
-        public string CallbackUrl { get; set; } = "";
-        public string Mode { get; set; } = "";
-        public string UserId { get; set; } = "";
-        public string UserName { get; set; } = "";
+
+        [JsonPropertyName("document")]
+        public DocumentConfig? Document { get; set; }
+
+        [JsonPropertyName("editorConfig")]
+        public EditorConfigSettings? EditorConfig { get; set; }  // <- Ora può chiamarsi così
+
+        [JsonPropertyName("token")]
+        public string Token { get; set; } = "";
+
+        [JsonPropertyName("apiUrl")]
         public string ApiUrl { get; set; } = "";
+    }
+
+    public class DocumentConfig
+    {
+        [JsonPropertyName("fileType")]
+        public string FileType { get; set; } = "";
+
+        [JsonPropertyName("key")]
+        public string Key { get; set; } = "";
+
+        [JsonPropertyName("title")]
+        public string Title { get; set; } = "";
+
+        [JsonPropertyName("url")]
+        public string Url { get; set; } = "";
+    }
+
+    public class EditorConfigSettings
+    {
+        [JsonPropertyName("mode")]
+        public string Mode { get; set; } = "";
+
+        [JsonPropertyName("callbackUrl")]
+        public string CallbackUrl { get; set; } = "";
+
+        [JsonPropertyName("user")]
+        public UserConfig? User { get; set; }
+    }
+
+    public class UserConfig
+    {
+        [JsonPropertyName("id")]
+        public string Id { get; set; } = "";
+
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "";
     }
 }
