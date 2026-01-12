@@ -37,7 +37,7 @@ window.onlyOfficeEditor = {
                 },
                 token: config.token,
                 width: "100%",
-                height: "600px",
+                height: "800px",
                 events: {
                     onDocumentStateChange: function (event) {
                         console.log('Stato documento cambiato:', event);
